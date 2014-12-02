@@ -58,3 +58,8 @@ target/
 
 # Vagrant
 .vagrant
+
+# Test Certs
+*.pem
+*.cer
+*.key

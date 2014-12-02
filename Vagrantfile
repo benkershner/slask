@@ -8,16 +8,15 @@ Vagrant.require_version ">= 1.5.0"
 
 $script = <<EOS
 apt-get update
-apt-get install -y python-pip python-dev build-essential libffi-dev
+apt-get install -y python-pip python-dev nginx
 cd /vagrant
 python ./setup.py develop
 EOS
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.hostname = "slask"
-  config.vm.box = "opscode-ubuntu-12.04-chef"
-  config.vm.box_url = "https://oss-binaries.phusionpassenger.com/vagrant/boxes/latest/ubuntu-12.04-amd64-vbox.box"
+  config.vm.box = "ubuntu-14.04"
+  config.vm.box_url = "https://cloud-images.ubuntu.com/vagrant/trusty/current/trusty-server-cloudimg-amd64-vagrant-disk1.box"
   config.vm.network :private_network, type: "dhcp"
-
   config.vm.provision "shell", inline: $script
 end

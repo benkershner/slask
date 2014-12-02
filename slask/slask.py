@@ -3,7 +3,9 @@ from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from flask import Flask, request, make_response
 from json import dumps, loads
 from requests import post
-from sys import exit
+from sys import exit, stderr
+from os import symlink, readlink
+from os.path import join, islink
 
 
 def parse_args():
@@ -22,6 +24,11 @@ def parse_args():
     parser.add_argument('--install-service',
                         choices=['upstart'],
                         help='install service wrapper')
+    parser.add_argument('--install-nginx-config',
+                        action='store_true',
+                        help='install nginx configs')
+    parser.add_argument('--url',
+                        help='public-facing url')
     parser.add_argument('--private-key',
                         help='SSL private key file')
     parser.add_argument('--certificate',
@@ -67,12 +74,57 @@ exec slask %s''' % ' '.join(['--%s %s' % (kwarg, getattr(self, kwarg))
             f.write(script)
 
 
+    def _install_nginx_config(self):
+        if self.url is None or self.private_key is None or self.certificate is None:
+            raise RuntimeError('Must specify --url, --private-key, and --certificate')
+
+        local_url = "%s:%s" % ('localhost' if self.host == '0.0.0.0' else self.host, self.port)
+        config = '''\
+server {
+    listen              443 ssl;
+    server_name         %s;
+    ssl_certificate     %s;
+    ssl_certificate_key %s;
+    ssl_protocols       TLSv1 TLSv1.1 TLSv1.2;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    location / {
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+  
+        proxy_pass          http://%s;
+        proxy_read_timeout  90;
+  
+        proxy_redirect      http://%s; https://%s;
+    }
+}''' % (self.url, self.certificate, self.private_key, local_url, local_url, self.url)
+
+        nginx_dir = '/etc/nginx'
+        location = join(nginx_dir, 'sites-available', 'slask')
+        link = join(nginx_dir, 'sites-enabled', 'slask')
+        with open(location, 'w') as f:
+            f.write(config)
+        try:
+            symlink(location, link)
+        except OSError as e:
+            if islink(link) and readlink(link) == location:
+                pass
+            else:
+                raise e
+
     def __init__(self, *args, **kwargs):
         for kwarg in kwargs:
             setattr(self, kwarg, kwargs[kwarg])
 
         if self.install_service is not None:
             self._install_service()
+
+        if self.install_nginx_config is not None:
+            self._install_nginx_config()
+
+        if self.install_service is not None or self.install_nginx_config is not None:
             exit(0)
 
         self.app = Flask(__name__)
@@ -126,10 +178,9 @@ exec slask %s''' % ' '.join(['--%s %s' % (kwarg, getattr(self, kwarg))
 
     def run(self):
         context = None
-        if self.private_key is not None and self.certificate is not None:
-            from OpenSSL import SSL
-            context = SSL.Context(SSL.TLSv1_2_METHOD)
-            context.use_privatekey_file(self.private_key)
-            context.use_certificate_file(self.certificate)
+#        if self.private_key is not None and self.certificate is not None:
+#            import ssl
+#            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+#            context.load_cert_chain(self.certificate, self.private_key)
 
         self.app.run(host=self.host, port=self.port, debug=True, ssl_context=context)
