@@ -15,7 +15,7 @@ def parse_args():
                             epilog=epilog,
                             formatter_class=RawDescriptionHelpFormatter)
     parser.add_argument('--host',
-                        default='0.0.0.0',
+                        default='127.0.0.1',
                         help='listen host')
     parser.add_argument('-p', '--port',
                         default=8080,
@@ -33,6 +33,9 @@ def parse_args():
                         help='SSL private key file')
     parser.add_argument('--certificate',
                         help='SSL certificate file')
+    parser.add_argument('--debug',
+                        action='store_true',
+                        help='Flask debug mode')
     parser.add_argument('-v', '--verbose',
                         action='store_true',
                         help='print verbose output')
@@ -97,7 +100,7 @@ server {
         proxy_pass          http://%s;
         proxy_read_timeout  90;
   
-        proxy_redirect      http://%s; https://%s;
+        proxy_redirect      http://%s https://%s;
     }
 }''' % (self.url, self.certificate, self.private_key, local_url, local_url, self.url)
 
@@ -121,10 +124,10 @@ server {
         if self.install_service is not None:
             self._install_service()
 
-        if self.install_nginx_config is not None:
+        if self.install_nginx_config:
             self._install_nginx_config()
 
-        if self.install_service is not None or self.install_nginx_config is not None:
+        if self.install_service is not None or self.install_nginx_config:
             exit(0)
 
         self.app = Flask(__name__)
@@ -166,7 +169,10 @@ server {
 
             text = request.get_data()
             if options & (1 << 1):
-                text = dumps(loads(text), indent=4)
+                try:
+                    text = dumps(loads(text), indent=4)
+                except:
+                    pass
             if options & (1 << 0):
                 text = '```%s```' % text
 
@@ -183,4 +189,4 @@ server {
 #            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
 #            context.load_cert_chain(self.certificate, self.private_key)
 
-        self.app.run(host=self.host, port=self.port, debug=True, ssl_context=context)
+        self.app.run(host=self.host, port=self.port, debug=self.debug, ssl_context=context)
